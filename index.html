@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aria Talking Head</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a dark "studio" stage holding the live head, with a chat console beside it (stacked on phones). */
+:root {
+  --bg: #eceff2;
+  --panel: #ffffff;
+  --panel-2: #f4f6f8;
+  --fg: #15181d;
+  --muted: #5b6672;
+  --line: #d5dbe1;
+  --accent: #c2410c;
+  --accent-fg: #ffffff;
+  --stage-a: #2b3440;
+  --stage-b: #11151a;
+  --ok: #17803d;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1014; --panel: #161b21; --panel-2: #1d232b; --fg: #e9edf1; --muted: #93a0ad;
+    --line: #2a323c; --accent: #f08a4b; --accent-fg: #1a0d04; --stage-a: #2b3440; --stage-b: #0a0d11; --ok: #4ade80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1014; --panel: #161b21; --panel-2: #1d232b; --fg: #e9edf1; --muted: #93a0ad;
+  --line: #2a323c; --accent: #f08a4b; --accent-fg: #1a0d04; --stage-a: #2b3440; --stage-b: #0a0d11; --ok: #4ade80;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 28px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(24px, 4vw, 34px); letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; font-size: 14px; max-width: 62ch; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+@media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.stage {
+  position: relative; border-radius: 14px; overflow: hidden; min-height: 420px; aspect-ratio: 4 / 5; max-height: 640px;
+  background: radial-gradient(120% 90% at 50% 20%, var(--stage-a), var(--stage-b));
+  border: 1px solid var(--line);
+}
+@media (max-width: 820px) { .stage { aspect-ratio: 1 / 1; min-height: 320px; } }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hud { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: flex-end; pointer-events: none; }
+.chip { font-family: var(--font-mono); font-size: 11.5px; color: #d7dde4; background: rgba(10, 13, 17, 0.62); border: 1px solid rgba(255,255,255,0.12); padding: 4px 8px; border-radius: 6px; }
+.state { display: inline-flex; align-items: center; gap: 7px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #7d8996; }
+.state[data-s="speaking"] .dot { background: #f08a4b; animation: pulse 0.7s infinite alternate; }
+.state[data-s="thinking"] .dot { background: #e6c04a; animation: pulse 0.5s infinite alternate; }
+.state[data-s="listening"] .dot { background: #4ade80; animation: pulse 0.9s infinite alternate; }
+@keyframes pulse { from { opacity: 0.35; } to { opacity: 1; } }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: #c5ced8; font-family: var(--font-mono); font-size: 13px; text-align: center; padding: 20px; }
+.loading[hidden] { display: none; }
+.console { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-width: 0; }
+.log { flex: 1; min-height: 240px; max-height: 440px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 88%; padding: 9px 12px; border-radius: 12px; overflow-wrap: anywhere; }
+.msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); border-bottom-right-radius: 4px; }
+.msg.bot { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.msg small { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.msg.user small { color: inherit; opacity: 0.75; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+button, select, input[type="text"] { font: inherit; color: var(--fg); }
+.chipbtn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13.5px; }
+.chipbtn:hover { border-color: var(--accent); }
+form { display: flex; gap: 8px; }
+input[type="text"] { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.btn { background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 10px; padding: 10px 16px; font-weight: 500; cursor: pointer; }
+.btn.ghost { background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; }
+.row label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); min-width: 0; }
+select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; max-width: 100%; }
+input[type="range"] { accent-color: var(--accent); width: 110px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 0; }
+.fact { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.fact b { display: block; font-family: var(--font-mono); font-weight: 500; font-size: 16px; font-variant-numeric: tabular-nums; }
+.fact span { color: var(--muted); font-size: 12.5px; }
+.note { color: var(--muted); font-size: 13px; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+body { margin: 0; }
+[hidden] { display: none !important; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Aria, interactive talking head</h1>
+    <p class="sub">A real-time 3D face with 52 facial blend shapes. It listens to your text, answers with AI and moves its mouth in sync with its voice. It runs in the browser, so no GPU is needed.</p>
+  </header>
+
+  <div class="grid">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="3D talking head"></canvas>
+      <div class="loading" id="loading">Loading face model…</div>
+      <div class="hud">
+        <span class="chip state" id="state" data-s="idle"><i class="dot"></i><span id="stateTxt">idle</span></span>
+        <span class="chip" id="fps">– fps</span>
+      </div>
+    </div>
+
+    <div class="console">
+      <div class="panel log" id="log" role="log" aria-live="polite"></div>
+      <div class="chips" id="starters"></div>
+      <form id="form" autocomplete="off">
+        <input type="text" id="q" placeholder="Say something to Aria…" aria-label="Message to Aria" maxlength="300">
+        <button class="btn ghost" type="button" id="mic" title="Speak instead of typing" hidden>Mic</button>
+        <button class="btn" type="submit" id="send">Send</button>
+      </form>
+      <div class="panel row">
+        <label>Voice <select id="voice" aria-label="Voice"></select></label>
+        <label>Speed <input type="range" id="rate" min="0.7" max="1.3" step="0.05" value="1" aria-label="Speech speed"></label>
+        <label><input type="checkbox" id="muted"> Mute voice</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="facts">
+    <div class="fact"><b id="fMorph">–</b><span>facial blend shapes</span></div>
+    <div class="fact"><b id="fJaw">0.00</b><span>jaw open, live</span></div>
+    <div class="fact"><b id="fTri">–</b><span>triangles rendered</span></div>
+    <div class="fact"><b id="fBrain">–</b><span>reply engine</span></div>
+  </div>
+  <p class="note">This is a browser prototype of the interaction loop: text in, AI reply, voice out, lip-sync. It is not a photorealistic Unreal Engine MetaHuman.</p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./lib/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "./lib/loaders/GLTFLoader.js";
+import { KTX2Loader } from "./lib/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from "./lib/libs/meshopt_decoder.module.js";
+import FACE_B64 from "./lib/facecap_data.js";
+
+const $ = (id) => document.getElementById(id);
+const PERSONA = "You are Aria, a friendly on-screen virtual assistant shown as a 3D talking head. Reply in plain spoken English, 1 to 2 short sentences, no lists, no markdown, no emojis. If the user writes Hinglish, answer in simple English. You can talk about yourself (a real-time browser avatar with lip-sync), 3D character design, and virtual avatars in general. Be warm and concise.";
+
+/* ---------- state ---------- */
+let state = "idle";
+function setState(s) { state = s; $("state").dataset.s = s; $("stateTxt").textContent = s; }
+
+/* ---------- three.js scene ---------- */
+const canvas = $("cv");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(24, 1, 0.1, 100);
+camera.position.set(0, 0, 3.4);
+
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x2a2018, 0.9));
+const key = new THREE.DirectionalLight(0xfff1e0, 2.0); key.position.set(1.6, 1.4, 2.4); scene.add(key);
+const rim = new THREE.DirectionalLight(0x8fb4ff, 1.1); rim.position.set(-2, 0.8, -1.5); scene.add(rim);
+
+const rig = new THREE.Group(); scene.add(rig);
+let faceMesh = null, dict = null, infl = null, eyeL = null, eyeR = null;
+
+function resize() {
+  const r = $("stage").getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / r.height;
+  camera.position.z = camera.aspect < 0.85 ? 4.0 : 3.4;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe($("stage")); resize();
+
+const ktx2 = new KTX2Loader().setTranscoderPath("./lib/libs/basis/").detectSupport(renderer);
+const loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+const faceBuf = Uint8Array.from(atob(FACE_B64), (c) => c.charCodeAt(0)).buffer;
+loader.parse(faceBuf, "./", (gltf) => {
+  const root = gltf.scene;
+  root.traverse((o) => {
+    if (o.isMesh && o.morphTargetDictionary && !faceMesh) { faceMesh = o; }
+    const n = (o.name || "").toLowerCase();
+    if (n.includes("eyeleft")) eyeL = o; if (n.includes("eyeright")) eyeR = o;
+  });
+  if (!faceMesh) { $("loading").textContent = "Face model has no blend shapes."; return; }
+  dict = faceMesh.morphTargetDictionary; infl = faceMesh.morphTargetInfluences;
+  // centre the model on the head, scale to fit
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const s = 1.55 / Math.max(size.y, size.x);
+  root.scale.setScalar(s); root.position.set(-c.x * s, -c.y * s, -c.z * s);
+  rig.add(root);
+  let tris = 0; root.traverse((o) => { if (o.isMesh) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+  $("fMorph").textContent = Object.keys(dict).length; $("fTri").textContent = Math.round(tris).toLocaleString();
+  $("loading").hidden = true;
+  setState("idle");
+}, (e) => { console.error(e); $("loading").textContent = "Could not load the face model."; });
+
+/* ---------- facial animation ---------- */
+const target = {};   // desired morph weights this frame
+const cur = {};      // smoothed
+const set = (name, v) => { if (dict && name in dict) target[name] = Math.max(target[name] || 0, v); };
+
+// viseme presets built from ARKit-style blend shapes
+const VIS = {
+  A:  { jawOpen: 0.62, mouthLowerDownLeft: 0.25, mouthLowerDownRight: 0.25 },
+  E:  { jawOpen: 0.30, mouthSmileLeft: 0.45, mouthSmileRight: 0.45, mouthStretchLeft: 0.2, mouthStretchRight: 0.2 },
+  I:  { jawOpen: 0.16, mouthSmileLeft: 0.55, mouthSmileRight: 0.55 },
+  O:  { jawOpen: 0.36, mouthFunnel: 0.75, mouthPucker: 0.25 },
+  U:  { jawOpen: 0.14, mouthPucker: 0.85, mouthFunnel: 0.3 },
+  M:  { mouthClose: 0.55, mouthPressLeft: 0.5, mouthPressRight: 0.5, mouthRollLower: 0.2, mouthRollUpper: 0.2 },
+  F:  { jawOpen: 0.10, mouthRollLower: 0.65, mouthUpperUpLeft: 0.25, mouthUpperUpRight: 0.25 },
+  S:  { jawOpen: 0.08, mouthSmileLeft: 0.3, mouthSmileRight: 0.3, mouthStretchLeft: 0.25, mouthStretchRight: 0.25 },
+  T:  { jawOpen: 0.20, mouthShrugUpper: 0.2, tongueOut: 0 },
+  N:  { jawOpen: 0.00 }
+};
+const VMAP = { a: "A", e: "E", i: "I", y: "I", o: "O", u: "U", w: "U", m: "M", b: "M", p: "M", f: "F", v: "F", s: "S", z: "S", c: "S", x: "S", j: "S", q: "U", t: "T", d: "T", l: "T", n: "T", r: "T", k: "T", g: "T", h: "T" };
+
+// a timeline of [startMs, endMs, viseme]
+let timeline = [], speakStart = 0, speakActive = false, estDone = 0;
+
+function visemesForWord(word, t0, dur) {
+  const letters = word.toLowerCase().replace(/[^a-z]/g, "").split("");
+  if (!letters.length) return [];
+  // collapse repeats like "oo" / "ll"
+  const seq = letters.filter((ch, i) => !(i && VMAP[ch] === VMAP[letters[i - 1]]));
+  const step = dur / seq.length;
+  return seq.map((ch, i) => [t0 + i * step, t0 + (i + 1) * step, VMAP[ch] || "T"]);
+}
+function buildFallbackTimeline(text, rate) {
+  const words = text.split(/\s+/).filter(Boolean);
+  let t = 0; const out = [];
+  for (const w of words) {
+    const dur = (Math.max(2, w.replace(/[^a-z]/gi, "").length) * 62 + 70) / rate;
+    out.push(...visemesForWord(w, t, dur * 0.92)); t += dur + (/[.,;!?]$/.test(w) ? 220 / rate : 0);
+  }
+  estDone = t; return out;
+}
+
+let blinkAt = 1500, blinkT = -1, gazeAt = 0, gaze = { x: 0, y: 0 }, gazeTo = { x: 0, y: 0 };
+const clock = new THREE.Clock();
+let frames = 0, fpsT = performance.now();
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05), now = performance.now();
+  for (const k in target) delete target[k];
+
+  if (dict) {
+    // speech visemes
+    if (speakActive) {
+      const t = now - speakStart;
+      const seg = timeline.find((s) => t >= s[0] && t < s[1]);
+      if (seg) {
+        const v = VIS[seg[2]] || VIS.N, p = (t - seg[0]) / (seg[1] - seg[0]);
+        const env = Math.sin(Math.min(1, p) * Math.PI) * 0.55 + 0.45; // open then relax inside each unit
+        for (const k in v) set(k, v[k] * env);
+      }
+      set("browInnerUp", 0.18 + 0.12 * Math.sin(now / 420));
+      set("browOuterUpLeft", 0.08); set("browOuterUpRight", 0.08);
+    } else if (state === "thinking") {
+      set("browInnerUp", 0.35); set("eyeLookUpLeft", 0.25); set("eyeLookUpRight", 0.25); set("mouthPressLeft", 0.15); set("mouthPressRight", 0.15);
+    } else if (state === "listening") {
+      set("browInnerUp", 0.25); set("mouthSmileLeft", 0.18); set("mouthSmileRight", 0.18);
+    } else {
+      set("mouthSmileLeft", 0.14); set("mouthSmileRight", 0.14);
+    }
+    // blink
+    if (now > blinkAt && blinkT < 0) { blinkT = now; blinkAt = now + 2200 + Math.random() * 3200; }
+    if (blinkT >= 0) {
+      const p = (now - blinkT) / 150;
+      if (p >= 1) blinkT = -1; else { const b = Math.sin(p * Math.PI); set("eyeBlinkLeft", b); set("eyeBlinkRight", b); }
+    }
+    // gaze drift
+    if (now > gazeAt) { gazeTo = { x: (Math.random() - 0.5) * 0.5, y: (Math.random() - 0.5) * 0.35 }; gazeAt = now + 1200 + Math.random() * 2200; }
+    gaze.x += (gazeTo.x - gaze.x) * Math.min(1, dt * 6); gaze.y += (gazeTo.y - gaze.y) * Math.min(1, dt * 6);
+    if (state !== "thinking") {
+      set(gaze.x > 0 ? "eyeLookOutLeft" : "eyeLookInLeft", Math.abs(gaze.x)); set(gaze.x > 0 ? "eyeLookInRight" : "eyeLookOutRight", Math.abs(gaze.x));
+      set(gaze.y > 0 ? "eyeLookUpLeft" : "eyeLookDownLeft", Math.abs(gaze.y)); set(gaze.y > 0 ? "eyeLookUpRight" : "eyeLookDownRight", Math.abs(gaze.y));
+    }
+    // smooth every morph toward its target (fast attack for the jaw/mouth, slower elsewhere)
+    for (const name in dict) {
+      const goal = target[name] || 0, c = cur[name] || 0;
+      const rate = /^(jaw|mouth)/.test(name) ? 22 : 12;
+      const nv = c + (goal - c) * Math.min(1, dt * rate);
+      cur[name] = nv; infl[dict[name]] = nv;
+    }
+    $("fJaw").textContent = (cur.jawOpen || 0).toFixed(2);
+    // gentle head motion
+    const sp = speakActive ? 1 : 0.4;
+    rig.rotation.y = Math.sin(now / 1900) * 0.07 * sp + gaze.x * 0.15;
+    rig.rotation.x = Math.sin(now / 1500 + 1) * 0.035 * sp - gaze.y * 0.1 + (speakActive ? Math.sin(now / 330) * 0.012 : 0);
+    rig.rotation.z = Math.sin(now / 2300 + 2) * 0.02 * sp;
+  }
+  renderer.render(scene, camera);
+  frames++;
+  if (now - fpsT > 1000) { $("fps").textContent = Math.round(frames * 1000 / (now - fpsT)) + " fps"; frames = 0; fpsT = now; }
+}
+frame();
+
+/* ---------- voice ---------- */
+const synth = window.speechSynthesis;
+let voices = [];
+function loadVoices() {
+  if (!synth) { $("voice").innerHTML = "<option>No voice support</option>"; $("voice").disabled = true; return; }
+  voices = synth.getVoices();
+  const en = voices.filter((v) => /^en/i.test(v.lang));
+  const list = en.length ? en : voices;
+  const sel = $("voice"); const prev = sel.value; sel.innerHTML = "";
+  list.forEach((v) => { const o = document.createElement("option"); o.value = v.name; o.textContent = v.name + " (" + v.lang + ")"; sel.appendChild(o); });
+  const pref = list.find((v) => /en-IN/i.test(v.lang)) || list.find((v) => /female|samantha|zira|aria|google uk english female/i.test(v.name)) || list[0];
+  sel.value = prev || (pref && pref.name) || "";
+}
+if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; }
+
+let speakToken = 0;
+function stopSpeaking() { speakToken++; speakActive = false; if (synth) synth.cancel(); }
+function speak(text) {
+  return new Promise((resolve) => {
+    const token = ++speakToken;
+    const rate = parseFloat($("rate").value) || 1;
+    const muted = $("muted").checked || !synth;
+    let boundarySeen = false;
+    timeline = buildFallbackTimeline(text, rate);
+    const finish = () => { if (token === speakToken) { speakActive = false; setState("idle"); } resolve(); };
+    setState("speaking");
+    if (muted) {   // silent mode still animates the mouth
+      speakStart = performance.now(); speakActive = true;
+      setTimeout(finish, estDone + 250); return;
+    }
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = voices.find((x) => x.name === $("voice").value); if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = rate; u.pitch = 1.02;
+    u.onstart = () => { speakStart = performance.now(); speakActive = true; };
+    u.onboundary = (e) => {
+      if (token !== speakToken || e.name === "sentence") return;
+      if (!boundarySeen) { boundarySeen = true; timeline = []; }
+      const m = /^\S+/.exec(text.slice(e.charIndex)); const w = m ? m[0] : "";
+      const len = e.charLength || w.length;
+      const t0 = performance.now() - speakStart, dur = (Math.max(2, len) * 60 + 60) / rate;
+      timeline = timeline.filter((s) => s[1] > t0 - 50);
+      timeline.push(...visemesForWord(w, t0, dur * 0.9));
+    };
+    u.onend = finish; u.onerror = finish;
+    // safety: if the engine never starts (autoplay policy), animate silently
+    setTimeout(() => { if (token === speakToken && !speakActive) { speakStart = performance.now(); speakActive = true; setTimeout(finish, estDone + 250); } }, 1500);
+    synth.speak(u);
+  });
+}
+
+/* ---------- reply engine ---------- */
+let sample = null;
+const history = [];
+const CANNED = [
+  [/hello|hi\b|hey|namaste|hola/i, "Hi, I'm Aria. I'm a real-time 3D face running right in your browser. Ask me anything."],
+  [/who|name|what are you|yourself/i, "I'm Aria, a talking head prototype. My face has fifty-two blend shapes, and my mouth follows my voice."],
+  [/gpu|hardware|unreal|metahuman|realistic/i, "I run on a normal laptop with no dedicated graphics card. A photorealistic Unreal MetaHuman needs a strong GPU, local or rented in the cloud."],
+  [/how|work|made|built/i, "Your text goes to an AI for the reply, the browser speaks it, and the speech timing drives my mouth shapes."],
+  [/thank/i, "You're welcome. Happy to help."]
+];
+async function reply(text) {
+  if (sample) {
+    try {
+      const msgs = history.slice(-8).concat([{ role: "user", content: text }]);
+      const convo = msgs.map((m) => (m.role === "user" ? "User: " : "Aria: ") + m.content).join("\n");
+      const r = await sample(PERSONA + "\n\nConversation so far:\n" + convo + "\n\nWrite only Aria's next reply.", { cache: false, modelTier: "quick" });
+      const t = (r.text || "").replace(/^Aria:\s*/i, "").replace(/[*_#`]/g, "").trim();
+      if (t) return t;
+    } catch (e) { console.warn("sample failed", e && e.code); if (e && e.code === "not_granted") sample = null; }
+  }
+  const hit = CANNED.find((c) => c[0].test(text));
+  return hit ? hit[1] : "That's a good question. I'm a small demo, so my answers are simple, but I can tell you how I work if you ask.";
+}
+
+/* ---------- chat UI ---------- */
+function addMsg(who, text) {
+  const d = document.createElement("div"); d.className = "msg " + who;
+  const s = document.createElement("small"); s.textContent = who === "user" ? "You" : "Aria";
+  const p = document.createElement("span"); p.textContent = text;
+  d.append(s, p); $("log").appendChild(d); $("log").scrollTop = $("log").scrollHeight; return d;
+}
+let busy = false;
+async function ask(text) {
+  text = text.trim(); if (!text || busy) return;
+  busy = true; $("send").disabled = true; stopSpeaking();
+  addMsg("user", text); history.push({ role: "user", content: text });
+  setState("thinking");
+  const ans = await reply(text);
+  history.push({ role: "assistant", content: ans }); addMsg("bot", ans);
+  busy = false; $("send").disabled = false;
+  await speak(ans);
+}
+$("form").addEventListener("submit", (e) => { e.preventDefault(); const v = $("q").value; $("q").value = ""; ask(v); });
+["Introduce yourself", "How do you work?", "Do you need a GPU?", "What can you be used for?"].forEach((t) => {
+  const b = document.createElement("button"); b.type = "button"; b.className = "chipbtn"; b.textContent = t;
+  b.addEventListener("click", () => ask(t)); $("starters").appendChild(b);
+});
+
+// optional microphone input (often blocked inside embedded pages; the button hides itself if so)
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  $("mic").hidden = false;
+  let rec = null;
+  $("mic").addEventListener("click", () => {
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = "en-IN"; rec.interimResults = false;
+    stopSpeaking(); setState("listening"); $("mic").textContent = "Stop";
+    rec.onresult = (e) => ask(e.results[0][0].transcript);
+    rec.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { $("mic").hidden = true; addMsg("bot", "Microphone is blocked in this view, so please type your message."); } };
+    rec.onend = () => { rec = null; $("mic").textContent = "Mic"; if (state === "listening") setState("idle"); };
+    try { rec.start(); } catch (e) { rec = null; setState("idle"); $("mic").textContent = "Mic"; }
+  });
+}
+
+addMsg("bot", "Hi, I'm Aria. Type a message or tap a suggestion and I'll answer out loud.");
+(async () => {
+  $("fBrain").textContent = sample ? "AI model" : "built-in";
+})();
+</script>
+</body>
+</html>
